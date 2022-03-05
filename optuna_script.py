@@ -1,10 +1,16 @@
 import optuna
 
+import torch.optim
+from torch.utils.data import random_split
+
+import albumentations as A
+from torchvision.datasets import CIFAR10
+
 """
 TODOs:
-1. Add early stopping
-2. Add importance sampling
-3. Add Learning rate decay
+- Add early stopping
+- Add importance sampling
+- Add Learning rate decay
 """
 
 # Generic hyperparameters
@@ -66,19 +72,38 @@ def objective(trial):
             trial.suggest_int(f'layer{layer_idx}_kernel_size', min_w, max_w, step=2))
         d['skip_kernel_sizes'].append(
             trial.suggest_int(f'layer{layer_idx}_skip_kernel_size', min_w, max_w, step=2))
-   
+
+    # Load optimization policy
+    train_transform = A.load("./data_augmentation/output//policy.json") # TODO: Change this once we finish finding policy
+    test_transform = None # TODO: Add this
+
+    # Create dataset
+    train_dataset = CIFAR10(root='~/data/CIFAR10', transform=train_transform, train=True)
+    test_dataset = CIFAR10(root='~/data/CIFAR10', tansform=test_transform, train=False)
+
+    # Split train dataset into train and test. Use 0.2 as ratio.
+    val_len = len(train_dataset) // 5
+    train_dataset, val_dataset = random_split(
+        train_dataset, [len(train_dataset)-val_len, val_len])
+
     # Evaluate model performance
     test_accs = []
     for _ in range(reps):
         # Instantiate model
         model = ResNet(d)
 
+        # Instatiate optimizer
+        optimizer = getattr(torch.optim, d['optimizer'])(
+            model.parameters(),
+            lr=d['lr'], betas=(d['beta_1'], d['beta_2']),
+            weight_decay=d['weight_decay'])
+
         # If model parameter count > 5M, return a bad value
         if sum(p.numel() for p in model.parameters() if p.requires_grad) > 5e6:
             return -1
 
         # Run train and test
-        test_accs.append(train_and_test(model, d))
+        test_accs.append(train_and_test(model, optimizer, train_dataset, val_dataset, test_dataset))
 
     return sum(test_accs)/len(test_accs)
 
@@ -87,7 +112,7 @@ if __name__ == "__main__":
     study = optuna.create_study(
         direction='maximize',
         study_name='DL2022',
-        storage='sqlite:///database.db',
+        storage='sqlite:///optuna_record.db',
         load_if_exists=True,
         pruner=optuna.pruners.HyperbandPruner())
     study.optimize(objective, n_trials=1000, timeout=60000)

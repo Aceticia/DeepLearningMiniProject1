@@ -15,3 +15,11 @@
             iii. Weight decay
         b. Output: Test accuracy & trained model
 3. How to contrain search space
+
+## Recreating a result
+### Installing environment
+Install the conda environment included, and use `conda activate dl2022` to activate it.
+### Data augmentation search
+Run `autoalbument-search --config-dir ./data_augmentation/` to do a search of data augmentation based on the dataset. This will create the augmentation policy in `./data_augmentation/outputs/<current_date>/<current_time>/`.
+### Run hyperparameter search
+Run `python optuna_script.py` to do a hyperparameter search. You can repeat this step for as many times as you want, this will give incrementally better results (possibly diminishing) as long as you keep the record file `optuna_records.db`.
