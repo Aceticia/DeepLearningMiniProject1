@@ -82,11 +82,13 @@ def objective(trial):
 
     return sum(test_accs)/len(test_accs)
 
-# Create study
-study = optuna.create_study(
-    direction='maximize',
-    study_name='DL2022',
-    storage='sqlite:///database.db',
-    load_if_exists=True,
-    pruner=optuna.pruners.HyperbandPruner())
-study.optimize(objective, n_trials=1000, timeout=60000)
+if __name__ == "__main__":
+    # Create study
+    study = optuna.create_study(
+        direction='maximize',
+        study_name='DL2022',
+        storage='sqlite:///database.db',
+        load_if_exists=True,
+        pruner=optuna.pruners.HyperbandPruner())
+    study.optimize(objective, n_trials=1000, timeout=60000)
+
