@@ -43,18 +43,21 @@ opt = ['AdamW', 'Adam']
 # Others
 reps = 5
 
-# Objective func
+
 def objective(trial):
     d = []
 
     # Global hyperparams
     d['n_layers'] = trial.suggest_int('n_layers', min_layers, max_layers)
     d['lr'] = trial.suggest_float('lr', min_lr, max_lr, log=True)
-    d['beta_1'] = trial.suggest_float('beta_1', min_beta_1, max_beta_1, log=True)
-    d['beta_2'] = trial.suggest_float('beta_2', min_beta_2, max_beta_2, log=True)
+    d['beta_1'] = trial.suggest_float(
+        'beta_1', min_beta_1, max_beta_1, log=True)
+    d['beta_2'] = trial.suggest_float(
+        'beta_2', min_beta_2, max_beta_2, log=True)
     d['optimizer'] = trial.suggest_categorical('optimizer', opt)
     d['weight_decay'] = \
-        trial.suggest_float('weight_decay', min_weight_decay, max_weight_decay, log=True)
+        trial.suggest_float('weight_decay', min_weight_decay,
+                            max_weight_decay, log=True)
     d['average_pool_kernel_size'] = \
         trial.suggest_int('avg_kernel_size', min_avg_w, max_avg_w, step=2)
 
@@ -74,12 +77,15 @@ def objective(trial):
             trial.suggest_int(f'layer{layer_idx}_skip_kernel_size', min_w, max_w, step=2))
 
     # Load optimization policy
-    train_transform = A.load("./data_augmentation/output//policy.json") # TODO: Change this once we finish finding policy
-    test_transform = None # TODO: Add this
+    # TODO: Change this once we finish finding policy
+    train_transform = A.load("./data_augmentation/output//policy.json")
+    test_transform = None  # TODO: Add this
 
     # Create dataset
-    train_dataset = CIFAR10(root='~/data/CIFAR10', transform=train_transform, train=True)
-    test_dataset = CIFAR10(root='~/data/CIFAR10', tansform=test_transform, train=False)
+    train_dataset = CIFAR10(root='~/data/CIFAR10',
+                            transform=train_transform, train=True)
+    test_dataset = CIFAR10(root='~/data/CIFAR10',
+                           tansform=test_transform, train=False)
 
     # Split train dataset into train and test. Use 0.2 as ratio.
     val_len = len(train_dataset) // 5
@@ -103,9 +109,11 @@ def objective(trial):
             return -1
 
         # Run train and test
-        test_accs.append(train_and_test(model, optimizer, train_dataset, val_dataset, test_dataset))
+        test_accs.append(train_and_test(model, optimizer,
+                         train_dataset, val_dataset, test_dataset))
 
     return sum(test_accs)/len(test_accs)
+
 
 if __name__ == "__main__":
     # Create study
@@ -116,4 +124,3 @@ if __name__ == "__main__":
         load_if_exists=True,
         pruner=optuna.pruners.HyperbandPruner())
     study.optimize(objective, n_trials=1000, timeout=60000)
-
