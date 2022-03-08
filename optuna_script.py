@@ -7,6 +7,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import random_split, DataLoader
 
 import albumentations as A
+import albumentations.pytorch as P
 from data_augmentation.dataset import Cifar10SearchDataset
 
 import pytorch_lightning as pl
@@ -27,7 +28,7 @@ max_w = 9          # Maximum kernel size (1+2x)
 min_w_s = 1        # Minimum skip connection kernel size (1+2x)
 max_w_s = 9        # Maximum skip connection kernel size (1+2x)
 min_avg_w = 2      # Minimum average pooling kernel size (1+2x)
-max_avg_w = 9      # Minimum average pooling kernel size (1+2x)
+max_avg_w = 3      # Minimum average pooling kernel size (1+2x)
 
 # Regularizer
 max_weight_decay = 1e-2
@@ -86,7 +87,7 @@ def objective(trial):
         train_transform = A.Compose([
             A.augmentations.transforms.Normalize(
                 (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
-            A.pytorch.transforms.ToTensorV2()])
+            P.transforms.ToTensorV2()])
     else:
         train_transform = A.load(
             f"./data_augmentation/outputs/2022-03-07/20-57-53/policy/epoch_{type_train_aug}.json")
@@ -117,7 +118,7 @@ def objective(trial):
 
     # Run train and val
     trial_id = trial.number
-    wandb_logger = WandbLogger(project="DLProject1", name=trial_id)
+    wandb_logger = WandbLogger(project="DLProject1", name=str(trial_id))
     trainer = pl.Trainer(
         logger=wandb_logger,
         max_epochs=50,
