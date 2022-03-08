@@ -34,6 +34,12 @@ min_weight_decay = 1e-6
 # Data augmentations
 augs = [None]+list(range(0, 40, 10))
 
+# Dropblock
+min_prob = 0.05
+max_prob = 0.2
+min_size = 1
+max_size = 7
+
 # Learning related
 max_lr = 1e-2
 min_lr = 1e-6
@@ -54,6 +60,7 @@ def objective(trial):
     d['n_channels'] = []
     d['kernel_sizes'] = []
     d['skip_kernel_sizes'] = []
+    d['dropblock'] = []
     for layer_idx in range(d['n_layers']):
         d['blocks'].append(
             trial.suggest_int(f'layer{layer_idx}_nblocks', min_b, max_b))
@@ -66,6 +73,10 @@ def objective(trial):
         d['skip_kernel_sizes'].append(
             trial.suggest_int(f'layer{layer_idx}_skip_kernel_size',
                               min_w, max_w, step=2))
+        d['dropblock'].append(
+            (trial.suggest_float(f'layer{layer_idx}_drop_prob', min_prob, max_prob),
+             trial.suggest_int(f'layer{layer_idx}_drop_size', min_size, max_size))
+        )
 
     # Instantiate model
     model = ResNet(**d)
@@ -119,7 +130,7 @@ def objective(trial):
         gpus=1,
         callbacks=[
             ModelCheckpoint(filepath=f"./outputs/checkpoints/{trial_id}.pt",
-                            monitor="val_loss")
+                            monitor="val_loss"),
         ],
     )
     trainer.fit(model, train_dataloader=train_loader,
@@ -135,7 +146,9 @@ if __name__ == "__main__":
     study = optuna.create_study(
         directions=["maximize", "maximize"],
         study_name='DL2022',
-        storage="mysql:///optuna_records.db",
+        storage=optuna.storages.RDBStorage(
+            url="sqlite:///optuna_records.db",
+            engine_kwargs={"connect_args": {"timeout": 500}}),
         load_if_exists=True
     )
     study.optimize(objective, n_trials=100000000000, timeout=60000)

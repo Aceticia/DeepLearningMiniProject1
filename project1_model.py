@@ -5,13 +5,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from dropblock import DropBlock2D, LinearScheduler
+
 
 class BasicBlock(nn.Module):
-
     def __init__(
             self, in_planes, planes, stride=1,
-            kernel_size=3, skip_kernel_size=1):
+            kernel_size=3, skip_kernel_size=1,
+            drop_prob=0.2, block_size=3):
         super(BasicBlock, self).__init__()
+
         self.conv1 = nn.Conv2d(
             in_planes, planes, kernel_size=kernel_size, stride=stride,
             padding=kernel_size//2, bias=False)
@@ -49,6 +52,15 @@ class ResNet(pl.LightningModule):
         self.d = d
         self.in_planes = d['n_channels'][0]
 
+        self.drops = nn.ModuleList()
+        for drop_prob, block_size in d['dropblock']:
+            self.drops.append(LinearScheduler(
+                DropBlock2D(drop_prob=drop_prob, block_size=block_size),
+                start_value=0.,
+                stop_value=drop_prob,
+                nr_steps=1000
+            ))
+
         self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(self.in_planes)
@@ -82,8 +94,9 @@ class ResNet(pl.LightningModule):
 
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
-        for layer in self.layers:
-            out = layer(out)
+        for layer, drop in zip(self.layers, self.drops):
+            drop.step()
+            out = drop(layer(out))
         out = F.adaptive_avg_pool2d(out, (1, 1))
         out = out.view(out.size(0), -1)
         out = self.linear(out)
