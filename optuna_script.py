@@ -1,4 +1,4 @@
-import os
+import wandb
 
 import optuna
 from optuna.integration import PyTorchLightningPruningCallback
@@ -33,6 +33,8 @@ max_avg_w = 9      # Minimum average pooling kernel size (1+2x)
 max_weight_decay = 1e-2
 min_weight_decay = 1e-6
 
+# Data augmentations
+augs = [None]+list(range(0, 40, 10))
 
 # Learning related
 max_lr = 1e-2
@@ -74,16 +76,24 @@ def objective(trial):
     model = ResNet(**d)
 
     # If model parameter count > 5M, return a bad value
-    if sum(p.numel() for p in model.parameters() if p.requires_grad) > 5e6:
-        return -1
+    param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    if param_count > 5e6:
+        return -param_count/1e6
 
     # Load augmentation policy
-    train_transform = A.load(
-        "./data_augmentation/outputs/2022-03-07/20-57-53/policy/latest.json")
-    test_transform = A.Compose(
+    type_train_aug = trial.suggest_categorical('type_aug', augs)
+    if type_train_aug is None:
+        train_transform = A.Compose([
+            A.augmentations.transforms.Normalize(
+                (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
+            A.pytorch.transforms.ToTensorV2()])
+    else:
+        train_transform = A.load(
+            f"./data_augmentation/outputs/2022-03-07/20-57-53/policy/epoch_{type_train_aug}.json")
+    test_transform = A.Compose([
         A.augmentations.transforms.Normalize(
             (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
-        A.pytorch.transforms.ToTensorV2())
+        A.pytorch.transforms.ToTensorV2()])
 
     # Create dataset
     train_dataset = Cifar10SearchDataset(root='~/data/CIFAR10',
@@ -106,22 +116,21 @@ def objective(trial):
         batch_size=1024, num_workers=8, shuffle=False, pin_memory=True)
 
     # Run train and val
-    checkpoint_loc = f"./outputs/{str(d)}"
-    os.mkdir(checkpoint_loc)
     wandb_logger = WandbLogger(project="DLProject1")
     trainer = pl.Trainer(
         logger=wandb_logger,
-        checkpoint_callback=False,
         max_epochs=50,
         gpus=1,
         callbacks=[
             PyTorchLightningPruningCallback(trial, monitor="val_acc"),
-            ModelCheckpoint(filepath=checkpoint_loc, monitor="val_loss")
+            ModelCheckpoint(filepath="./outputs/checkpoints",
+                            monitor="val_loss")
         ],
     )
     trainer.fit(model, train_dataloader=train_loader,
                 val_dataloaders=val_loader)
     trainer.test(model, test_dataloaders=test_loader)
+    wandb.finish()
 
     return trainer.callback_metrics["val_acc"].item()
 
@@ -134,7 +143,4 @@ if __name__ == "__main__":
         storage='sqlite:///optuna_record.db',
         load_if_exists=True,
         pruner=optuna.pruners.HyperbandPruner())
-    study.optimize(objective, n_trials=1000, timeout=60000)
-
-    # Find the best model, and test it
-    test_transform = None  # TODO: Add this
+    study.optimize(objective, n_trials=100000000000, timeout=60000)
