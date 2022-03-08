@@ -1,7 +1,6 @@
 import wandb
 
 import optuna
-from optuna.integration import PyTorchLightningPruningCallback
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from torch.utils.data import random_split, DataLoader
@@ -119,7 +118,6 @@ def objective(trial):
         max_epochs=50,
         gpus=1,
         callbacks=[
-            PyTorchLightningPruningCallback(trial, monitor="val_acc"),
             ModelCheckpoint(filepath=f"./outputs/checkpoints/{trial_id}.pt",
                             monitor="val_loss")
         ],
@@ -137,7 +135,7 @@ if __name__ == "__main__":
     study = optuna.create_study(
         directions=["maximize", "maximize"],
         study_name='DL2022',
-        storage='sqlite:///optuna_record.db',
-        load_if_exists=True,
-        pruner=optuna.pruners.HyperbandPruner())
+        storage="mysql:///optuna_records.db",
+        load_if_exists=True
+    )
     study.optimize(objective, n_trials=100000000000, timeout=60000)
