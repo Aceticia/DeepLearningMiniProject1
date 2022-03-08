@@ -27,8 +27,6 @@ min_w = 1          # Minimum kernel size (1+2x)
 max_w = 9          # Maximum kernel size (1+2x)
 min_w_s = 1        # Minimum skip connection kernel size (1+2x)
 max_w_s = 9        # Maximum skip connection kernel size (1+2x)
-min_avg_w = 2      # Minimum average pooling kernel size (1+2x)
-max_avg_w = 3      # Minimum average pooling kernel size (1+2x)
 
 # Regularizer
 max_weight_decay = 1e-2
@@ -52,9 +50,6 @@ def objective(trial):
     d['weight_decay'] = \
         trial.suggest_float('weight_decay', min_weight_decay,
                             max_weight_decay, log=True)
-    d['average_pool_kernel_size'] = \
-        trial.suggest_int('avg_kernel_size', min_avg_w, max_avg_w)
-
     # Local hyperparams
     d['blocks'] = []
     d['n_channels'] = []
@@ -79,7 +74,7 @@ def objective(trial):
     # If model parameter count > 5M, return a bad value
     param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if param_count > 5e6:
-        return -param_count/1e6
+        return -param_count/1e6, 0
 
     # Load augmentation policy
     type_train_aug = trial.suggest_categorical('type_aug', augs)
@@ -134,13 +129,13 @@ def objective(trial):
     trainer.test(model, test_dataloaders=test_loader)
     wandb.finish()
 
-    return trainer.callback_metrics["val_acc"].item()
+    return 0, trainer.callback_metrics["val_acc"].item()
 
 
 if __name__ == "__main__":
     # Create study
     study = optuna.create_study(
-        direction='maximize',
+        directions=["maximize", "maximize"],
         study_name='DL2022',
         storage='sqlite:///optuna_record.db',
         load_if_exists=True,
