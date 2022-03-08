@@ -116,14 +116,15 @@ def objective(trial):
         batch_size=1024, num_workers=8, shuffle=False, pin_memory=True)
 
     # Run train and val
-    wandb_logger = WandbLogger(project="DLProject1")
+    trial_id = trial.number
+    wandb_logger = WandbLogger(project="DLProject1", name=trial_id)
     trainer = pl.Trainer(
         logger=wandb_logger,
         max_epochs=50,
         gpus=1,
         callbacks=[
             PyTorchLightningPruningCallback(trial, monitor="val_acc"),
-            ModelCheckpoint(filepath="./outputs/checkpoints",
+            ModelCheckpoint(filepath=f"./outputs/checkpoints/{trial_id}.pt",
                             monitor="val_loss")
         ],
     )
