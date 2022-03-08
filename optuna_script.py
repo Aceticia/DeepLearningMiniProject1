@@ -1,5 +1,8 @@
+import os
+
 import optuna
 from optuna.integration import PyTorchLightningPruningCallback
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 from torch.utils.data import random_split, DataLoader
 
@@ -77,9 +80,10 @@ def objective(trial):
     # Load augmentation policy
     train_transform = A.load(
         "./data_augmentation/outputs/2022-03-07/20-57-53/policy/latest.json")
-    test_transform = A.load(
-        "./data_augmentation/outputs/2022-03-07/20-57-53/policy/latest.json")
-    # TODO: What do we use as a test policy?
+    test_transform = A.Compose(
+        A.augmentations.transforms.Normalize(
+            (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
+        A.pytorch.transforms.ToTensorV2())
 
     # Create dataset
     train_dataset = Cifar10SearchDataset(root='~/data/CIFAR10',
@@ -102,13 +106,18 @@ def objective(trial):
         batch_size=1024, num_workers=8, shuffle=False, pin_memory=True)
 
     # Run train and val
+    checkpoint_loc = f"./outputs/{str(d)}"
+    os.mkdir(checkpoint_loc)
     wandb_logger = WandbLogger(project="DLProject1")
     trainer = pl.Trainer(
         logger=wandb_logger,
         checkpoint_callback=False,
         max_epochs=50,
         gpus=1,
-        callbacks=[PyTorchLightningPruningCallback(trial, monitor="val_acc")],
+        callbacks=[
+            PyTorchLightningPruningCallback(trial, monitor="val_acc"),
+            ModelCheckpoint(filepath=checkpoint_loc, monitor="val_loss")
+        ],
     )
     trainer.fit(model, train_dataloader=train_loader,
                 val_dataloaders=val_loader)
