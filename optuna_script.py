@@ -1,17 +1,17 @@
 import wandb
-
 import optuna
-from pytorch_lightning.callbacks import ModelCheckpoint
-
-from torch.utils.data import random_split, DataLoader
+from optuna.integration.wandb import WeightsAndBiasesCallback
 
 import albumentations as A
 import albumentations.pytorch as P
 from data_augmentation.dataset import Cifar10SearchDataset
 
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 
+
+from torch.utils.data import random_split, DataLoader
 from project1_model import ResNet
 
 
@@ -92,6 +92,7 @@ def objective(trial):
 
     # Load augmentation policy
     type_train_aug = trial.suggest_int('type_aug', -1, 3)
+    d["aug_type"] = type_train_aug
     if type_train_aug < 0:
         train_transform = A.Compose([
             A.augmentations.transforms.Normalize(
@@ -127,10 +128,10 @@ def objective(trial):
 
     # Run train and val
     trial_id = trial.number
-    wandb_logger = WandbLogger(
-        project=f"DLProject_{search_approach}", name=str(trial_id))
+    wbl = WandbLogger(
+        project=f"DLProject1_{search_approach}_training", name=str(trial_id))
     trainer = pl.Trainer(
-        logger=wandb_logger,
+        logger=wbl,
         max_epochs=50,
         gpus=1,
         callbacks=[
@@ -147,14 +148,19 @@ def objective(trial):
 
 
 if __name__ == "__main__":
-
     # Create sampler
     sampler = {
-        "multi": optuna.samplers.MOTPESampler(n_startup_trials=200),
-        "revolution": optuna.samplers.CmaEsSampler(
-            n_startup_trials=200,
-            independent_sampler=optuna.samplers.TPESampler(),
-            restart_strategy='ipop', inc_popsize=2)
+        "multi": optuna.samplers.NSGAIISampler,
+        "revolution": optuna.samplers.CmaEsSampler
+    }
+
+    sampler_args = {
+        "multi": {},
+        "revolution": {
+            "n_startup_trials": 200,
+            "restart_strategy": 'ipop',
+            "inc_popsize": 2
+        }
     }
 
     # Optional params depending on strategy
@@ -170,7 +176,10 @@ if __name__ == "__main__":
         storage=optuna.storages.RDBStorage(
             url=f"sqlite:///records/{search_approach}.db",
             engine_kwargs={"connect_args": {"timeout": 500}}),
-        sampler=sampler[search_approach],
+        sampler=sampler[search_approach](**sampler_args[search_approach]),
         load_if_exists=True
     )
-    study.optimize(objective, n_trials=100000000000, timeout=60000)
+    wandbc = WeightsAndBiasesCallback(
+        wandb_kwargs={"project": f"DLProject1_{search_approach}"})
+    study.optimize(objective, n_trials=100000000000,
+                   timeout=60000, callbacks=[wandbc])
