@@ -7,5 +7,4 @@
 
 python optuna_script.py &
 python optuna_script.py &
-python optuna_script.py &
 python optuna_script.py

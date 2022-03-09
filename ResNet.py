@@ -127,3 +127,9 @@ class ResNet(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         self.evaluate(batch, "test")
+
+
+if __name__ == "__main__":
+    checkpoint_path = ""
+    loaded_model = ResNet.load_from_checkpoint(checkpoint_path)
+    print(loaded_model)
