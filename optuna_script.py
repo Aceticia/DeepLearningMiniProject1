@@ -15,6 +15,10 @@ from pytorch_lightning.loggers import WandbLogger
 from project1_model import ResNet
 
 
+# Select which approach to take, one of revolution, multi, and nsga
+search_approach = 'multi'
+
+
 # Generic hyperparameters
 min_layers = 4     # Minimum layers
 max_layers = 7     # Maximum layers
@@ -32,7 +36,7 @@ max_weight_decay = 1e-2
 min_weight_decay = 1e-6
 
 # Data augmentations
-augs = [None]+list(range(0, 40, 10))
+augs = [-1]+list(range(0, 40, 10))
 
 # Dropblock
 min_prob = 0.05
@@ -87,15 +91,15 @@ def objective(trial):
         return -param_count/1e6, 0
 
     # Load augmentation policy
-    type_train_aug = trial.suggest_categorical('type_aug', augs)
-    if type_train_aug is None:
+    type_train_aug = trial.suggest_int('type_aug', -1, 3)
+    if type_train_aug < 0:
         train_transform = A.Compose([
             A.augmentations.transforms.Normalize(
                 (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
             P.transforms.ToTensorV2()])
     else:
         train_transform = A.load(
-            f"./data_augmentation/outputs/2022-03-07/20-57-53/policy/epoch_{type_train_aug}.json")
+            f"./data_augmentation/outputs/2022-03-07/20-57-53/policy/epoch_{(type_train_aug+1)*10-1}.json")
     test_transform = A.Compose([
         A.augmentations.transforms.Normalize(
             (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
@@ -123,13 +127,14 @@ def objective(trial):
 
     # Run train and val
     trial_id = trial.number
-    wandb_logger = WandbLogger(project="DLProject1", name=str(trial_id))
+    wandb_logger = WandbLogger(
+        project=f"DLProject_{search_approach}", name=str(trial_id))
     trainer = pl.Trainer(
         logger=wandb_logger,
         max_epochs=50,
         gpus=1,
         callbacks=[
-            ModelCheckpoint(filepath=f"./outputs/checkpoints/{trial_id}.pt",
+            ModelCheckpoint(filepath=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
                             monitor="val_loss"),
         ],
     )
@@ -138,17 +143,34 @@ def objective(trial):
     trainer.test(model, test_dataloaders=test_loader)
     wandb.finish()
 
-    return 0, trainer.callback_metrics["val_acc"].item()
+    return 1, trainer.callback_metrics["val_acc"].item()
 
 
 if __name__ == "__main__":
+
+    # Create sampler
+    sampler = {
+        "multi": optuna.samplers.MOTPESampler(n_startup_trials=200),
+        "revolution": optuna.samplers.CmaEsSampler(
+            n_startup_trials=200,
+            independent_sampler=optuna.samplers.TPESampler(),
+            restart_strategy='ipop', inc_popsize=2)
+    }
+
+    # Optional params depending on strategy
+    options = {
+        "multi": {"directions": ['maximize', 'maximize']},
+        "evolution": {"direction": 'maximize'}
+    }
+
     # Create study
     study = optuna.create_study(
-        directions=["maximize", "maximize"],
-        study_name='DL2022',
+        **options[search_approach],  # Options specifically for the strategy
+        study_name=f'DL2022_{search_approach}',
         storage=optuna.storages.RDBStorage(
-            url="sqlite:///optuna_records.db",
+            url=f"sqlite:///records/{search_approach}.db",
             engine_kwargs={"connect_args": {"timeout": 500}}),
+        sampler=sampler[search_approach],
         load_if_exists=True
     )
     study.optimize(objective, n_trials=100000000000, timeout=60000)
