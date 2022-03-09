@@ -2,3 +2,4 @@
 ./wandb/
 ./outputs/
 *.db-journal/
+*.out

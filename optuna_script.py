@@ -92,22 +92,18 @@ def objective(trial):
     param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if param_count > 5e6:
         return -param_count/1e6, 0
-
-    # Load augmentation policy
-    type_train_aug = trial.suggest_int('type_aug', -1, 3)
-    d["aug_type"] = type_train_aug
-    if type_train_aug < 0:
-        train_transform = A.Compose([
-            A.augmentations.transforms.Normalize(
-                (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
-            P.transforms.ToTensorV2()])
     else:
-        train_transform = A.load(
-            f"./data_augmentation/outputs/2022-03-07/20-57-53/policy/epoch_{(type_train_aug+1)*10-1}.json")
+        params_penalty = -5
+
     test_transform = A.Compose([
         A.augmentations.transforms.Normalize(
             (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
         A.pytorch.transforms.ToTensorV2()])
+    if type_train_aug < 0:
+        train_transform = test_transform
+    else:
+        train_transform = A.load(
+            f"./data_augmentation/outputs/2022-03-07/20-57-53/policy/epoch_{(type_train_aug+1)*10-1}.json")
 
     # Create dataset
     train_dataset = Cifar10SearchDataset(root='~/data/CIFAR10',
@@ -119,6 +115,9 @@ def objective(trial):
     val_len = len(train_dataset) // 5
     train_dataset, val_dataset = random_split(
         train_dataset, [len(train_dataset)-val_len, val_len])
+
+    # Val data should also use train transform
+    val_dataset.transform = test_transform
     train_loader = DataLoader(
         train_dataset,
         batch_size=1024, num_workers=32, shuffle=True, pin_memory=True)
@@ -140,7 +139,7 @@ def objective(trial):
         callbacks=[
             ModelCheckpoint(filepath=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
                             monitor="val_loss"),
-            EarlyStopping(monitor="val_loss", patience=5)
+            EarlyStopping(monitor="val_loss", patience=10)
         ],
     )
     trainer.fit(model, train_dataloader=train_loader,
@@ -148,7 +147,7 @@ def objective(trial):
     trainer.test(model, test_dataloaders=test_loader)
     wandb.finish()
 
-    return 1, trainer.callback_metrics["val_acc"].item()
+    return params_penalty, trainer.callback_metrics["val_acc"].item()
 
 
 if __name__ == "__main__":
