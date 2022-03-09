@@ -81,6 +81,10 @@ def objective(trial):
              trial.suggest_int(f'layer{layer_idx}_drop_size', min_size, max_size))
         )
 
+    # Sample augmentation type
+    type_train_aug = trial.suggest_int('type_aug', -1, 3)
+    d["aug_type"] = type_train_aug
+
     # Instantiate model
     model = ResNet(**d)
 
