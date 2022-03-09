@@ -1,6 +1,5 @@
 import wandb
 import optuna
-from optuna.integration.wandb import WeightsAndBiasesCallback
 
 import albumentations as A
 import albumentations.pytorch as P
@@ -8,8 +7,8 @@ from data_augmentation.dataset import Cifar10SearchDataset
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
-
 
 from torch.utils.data import random_split, DataLoader
 from project1_model import ResNet
@@ -132,11 +131,12 @@ def objective(trial):
         project=f"DLProject1_{search_approach}_training", name=str(trial_id))
     trainer = pl.Trainer(
         logger=wbl,
-        max_epochs=50,
+        max_epochs=100,
         gpus=1,
         callbacks=[
             ModelCheckpoint(filepath=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
                             monitor="val_loss"),
+            EarlyStopping(monitor="val_loss", patience=5)
         ],
     )
     trainer.fit(model, train_dataloader=train_loader,
@@ -177,9 +177,7 @@ if __name__ == "__main__":
             url=f"sqlite:///records/{search_approach}.db",
             engine_kwargs={"connect_args": {"timeout": 500}}),
         sampler=sampler[search_approach](**sampler_args[search_approach]),
-        load_if_exists=True
+        load_if_exists=True,
     )
-    wandbc = WeightsAndBiasesCallback(
-        wandb_kwargs={"project": f"DLProject1_{search_approach}"})
     study.optimize(objective, n_trials=100000000000,
-                   timeout=60000, callbacks=[wandbc])
+                   timeout=60000)
