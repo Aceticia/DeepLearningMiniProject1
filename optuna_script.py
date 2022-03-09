@@ -11,7 +11,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
 
 from torch.utils.data import random_split, DataLoader
-from project1_model import ResNet
+from ResNet import ResNet
 
 
 # Select which approach to take, one of revolution, multi, and nsga
