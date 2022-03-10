@@ -1,9 +1,10 @@
 import wandb
 import optuna
 
-import albumentations as A
-import albumentations.pytorch as P
-from data_augmentation.dataset import Cifar10SearchDataset
+import torchvision.datasets as D
+import torchvision.transforms as T
+
+from pytorch_lightning_spells.callbacks import CutMixCallback, MixUpCallback, RandomAugmentationChoiceCallback
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -13,14 +14,10 @@ from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import random_split, DataLoader
 from ResNet import ResNet
 
-
 # Select which approach to take, one of revolution, multi, and nsga
 search_approach = 'multi'
 
-
 # Generic hyperparameters
-min_layers = 4     # Minimum layers
-max_layers = 7     # Maximum layers
 min_b = 2          # Minimum blocks per layer
 max_b = 10         # Maximum blocks per layer
 min_h = 32         # Minimum channels per block
@@ -35,15 +32,27 @@ max_weight_decay = 1e-2
 min_weight_decay = 1e-6
 
 # Augmix, randaug, and more
-# https://pytorch.org/vision/main/transforms.html#automatic-augmentation-transforms
+type_aug = {
+    "AutoAugment": (
+        T.AutoAugment,
+        lambda t: T.AutoAugmentPolicy.CIFAR10),
+    "RandAugment": (
+        T.RandAugment,
+        lambda t: t.suggest_int("randaug_num_ops", 2, 10)),
+    "TrivialAugment": T.TrivialAugmentWide
+}
 
 # Whether to use mixup, cutmix and label smoothing
 # https://pytorch-lightning-spells.readthedocs.io/en/latest/#augmentation
 # https://pytorch-lightning-spells.readthedocs.io/en/latest/pytorch_lightning_spells.losses.html#pytorch_lightning_spells.losses.MixupSoftmaxLoss
-
-
-# Data augmentations
-augs = [-1]+list(range(0, 40, 10))
+mix_type = {
+    'cutmix': CutMixCallback,
+    'mixup': MixUpCallback,
+}
+label_smoothing_min = 0
+label_smoothing_max = 0.5
+alpha_min = 0
+alpha_max = .8
 
 # Dropblock
 min_prob = 0.05
@@ -60,6 +69,8 @@ def objective(trial):
     d = {}
 
     # Global hyperparams
+    d['label_smooth'] = trial.suggest_float(
+        'label_smoothing', label_smoothing_min, label_smoothing_max)
     d['n_layers'] = 4
     d['lr'] = trial.suggest_float('lr', min_lr, max_lr, log=True)
     d['optimizer'] = 'AdamW'
@@ -86,11 +97,18 @@ def objective(trial):
              trial.suggest_int(f'layer{layer_idx}_drop_size', min_size, max_size))
         )
 
-    # Sample augmentation type
-    type_train_aug = trial.suggest_int('type_aug', -1, 3)
-    d["aug_type"] = type_train_aug
+    # Sample aug
+    aug_to_use = trial.suggest_categorical(
+        "augment_type", list(type_aug.keys()))
+    d["aug_to_use"] = aug_to_use
 
-    # Instantiate model
+    # Sample mixup, snapmix and cutmix
+    d['mixup_alpha'] = trial.suggest_float('mixup_alpha', alpha_min, alpha_max)
+    d['cutmix_alpha'] = trial.suggest_float(
+        'cutmix_alpha', alpha_min, alpha_max)
+    d['mixup_p'] = trial.suggest_float('mixup_p', 0, .1)
+    d['cutmix_p'] = 1-d['mixup_p']
+
     model = ResNet(**d)
 
     # If model parameter count > 5M, return a bad value
@@ -100,21 +118,31 @@ def objective(trial):
     else:
         params_penalty = -5
 
-    test_transform = A.Compose([
-        A.augmentations.transforms.Normalize(
+    # Sample augmentations
+    test_transform = T.Compose([
+        T.ToTensor(),
+        T.Normalize(
             (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
-        A.pytorch.transforms.ToTensorV2()])
-    if type_train_aug < 0:
-        train_transform = test_transform
+    ])
+
+    # Generate augmentations
+    aug = type_aug[aug_to_use]
+    if isinstance(aug, tuple):
+        aug = aug[0](aug[1](trial))
     else:
-        train_transform = A.load(
-            f"./data_augmentation/outputs/2022-03-07/20-57-53/policy/epoch_{(type_train_aug+1)*10-1}.json")
+        aug = aug()
+    train_transform = T.Compose([
+        T.ToTensor(),
+        aug,
+        T.Normalize(
+            (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
+    ])
 
     # Create dataset
-    train_dataset = Cifar10SearchDataset(root='~/data/CIFAR10',
-                                         transform=train_transform, train=True)
-    test_dataset = Cifar10SearchDataset(root='~/data/CIFAR10',
-                                        transform=test_transform, train=False)
+    train_dataset = D.CIFAR10(root='~/data/CIFAR10',
+                              transform=train_transform, train=True)
+    test_dataset = D.CIFAR10(root='~/data/CIFAR10',
+                             transform=test_transform, train=False)
 
     # Split train dataset into train and test. Use 0.2 as ratio.
     val_len = len(train_dataset) // 5
@@ -136,7 +164,7 @@ def objective(trial):
     # Run train and val
     trial_id = trial.number
     wbl = WandbLogger(
-        project=f"DLProject1_{search_approach}_training", name=str(trial_id))
+        project=f"debug_DLProject1_{search_approach}_training", name=str(trial_id))
     trainer = pl.Trainer(
         logger=wbl,
         max_epochs=100,
@@ -144,7 +172,13 @@ def objective(trial):
         callbacks=[
             ModelCheckpoint(filepath=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
                             monitor="val_loss"),
-            EarlyStopping(monitor="val_loss", patience=20)
+            EarlyStopping(monitor="val_loss", patience=20),
+            RandomAugmentationChoiceCallback([
+                CutMixCallback(d['cutmix_alpha']),
+                MixUpCallback(d['mixup_alpha'])],
+                [d['cutmix_p'], d['mixup_p']]
+            )
+
         ],
     )
     trainer.fit(model, train_dataloader=train_loader,
@@ -182,7 +216,7 @@ if __name__ == "__main__":
         **options[search_approach],  # Options specifically for the strategy
         study_name=f'DL2022_{search_approach}',
         storage=optuna.storages.RDBStorage(
-            url=f"sqlite:///records/{search_approach}.db",
+            url=f"sqlite:///records/debug_{search_approach}.db",
             engine_kwargs={"connect_args": {"timeout": 500}}),
         sampler=sampler[search_approach](**sampler_args[search_approach]),
         load_if_exists=True,

@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from dropblock import DropBlock2D, LinearScheduler
+from pytorch_lightning_spells.losses import MixupSoftmaxLoss
 
 
 class BasicBlock(nn.Module):
@@ -75,6 +76,7 @@ class ResNet(pl.LightningModule):
                     stride=1 if layer == 1 else 2))
 
         self.linear = nn.Linear(d['n_channels']*2**layer, num_classes)
+        self.loss = MixupSoftmaxLoss(label_smooth_eps=d['label_smooth'])
 
     def configure_optimizers(self):
         return torch.optim.AdamW(
@@ -98,21 +100,22 @@ class ResNet(pl.LightningModule):
             out = drop(layer(out))
         out = F.adaptive_avg_pool2d(out, (1, 1))
         out = out.view(out.size(0), -1)
-        out = self.linear(out)
-        return F.log_softmax(out, dim=-1)
+        return self.linear(out)
 
     # Training step, eval step, and val step from
     # https://pytorch-lightning.readthedocs.io/en/stable/notebooks/lightning_examples/cifar10-baseline.html
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
-        loss = F.nll_loss(logits, y)
+
+        # Use label smoothing mixup loss
+        loss = self.loss(logits, y)
         self.log("train_loss", loss)
         return loss
 
     def evaluate(self, batch, stage=None):
         x, y = batch
-        logits = self(x)
+        logits = F.log_softmax(self(x), dim=1)
         loss = F.nll_loss(logits, y)
         preds = torch.argmax(logits, dim=1)
         acc = accuracy(preds, y)
