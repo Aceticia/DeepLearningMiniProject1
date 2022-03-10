@@ -24,7 +24,7 @@ max_layers = 7     # Maximum layers
 min_b = 2          # Minimum blocks per layer
 max_b = 10         # Maximum blocks per layer
 min_h = 32         # Minimum channels per block
-max_h = 512        # Maximum channels per block
+max_h = 128        # Maximum channels per block
 min_w = 1          # Minimum kernel size (1+2x)
 max_w = 9          # Maximum kernel size (1+2x)
 min_w_s = 1        # Minimum skip connection kernel size (1+2x)
@@ -60,7 +60,7 @@ def objective(trial):
     d = {}
 
     # Global hyperparams
-    d['n_layers'] = trial.suggest_int('n_layers', min_layers, max_layers)
+    d['n_layers'] = 4
     d['lr'] = trial.suggest_float('lr', min_lr, max_lr, log=True)
     d['optimizer'] = 'AdamW'
     d['weight_decay'] = \
