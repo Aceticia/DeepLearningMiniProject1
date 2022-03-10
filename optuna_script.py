@@ -34,6 +34,14 @@ max_w_s = 9        # Maximum skip connection kernel size (1+2x)
 max_weight_decay = 1e-2
 min_weight_decay = 1e-6
 
+# Augmix, randaug, and more
+# https://pytorch.org/vision/main/transforms.html#automatic-augmentation-transforms
+
+# Whether to use mixup, cutmix and label smoothing
+# https://pytorch-lightning-spells.readthedocs.io/en/latest/#augmentation
+# https://pytorch-lightning-spells.readthedocs.io/en/latest/pytorch_lightning_spells.losses.html#pytorch_lightning_spells.losses.MixupSoftmaxLoss
+
+
 # Data augmentations
 augs = [-1]+list(range(0, 40, 10))
 
@@ -60,16 +68,13 @@ def objective(trial):
                             max_weight_decay, log=True)
     # Local hyperparams
     d['blocks'] = []
-    d['n_channels'] = []
     d['kernel_sizes'] = []
     d['skip_kernel_sizes'] = []
     d['dropblock'] = []
+    d['n_channels'] = trial.suggest_int('nhidden', min_h, max_h)
     for layer_idx in range(d['n_layers']):
         d['blocks'].append(
             trial.suggest_int(f'layer{layer_idx}_nblocks', min_b, max_b))
-        d['n_channels'].append(
-            trial.suggest_int(f'layer{layer_idx}_nhidden',
-                              min_h, max_h, log=True))
         d['kernel_sizes'].append(
             trial.suggest_int(f'layer{layer_idx}_kernel_size',
                               min_w, max_w, step=2))
@@ -139,7 +144,7 @@ def objective(trial):
         callbacks=[
             ModelCheckpoint(filepath=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
                             monitor="val_loss"),
-            EarlyStopping(monitor="val_loss", patience=10)
+            EarlyStopping(monitor="val_loss", patience=20)
         ],
     )
     trainer.fit(model, train_dataloader=train_loader,

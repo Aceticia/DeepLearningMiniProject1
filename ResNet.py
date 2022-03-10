@@ -50,7 +50,7 @@ class ResNet(pl.LightningModule):
         block = BasicBlock
         num_classes = 10
         self.d = d
-        self.in_planes = d['n_channels'][0]
+        self.in_planes = d['n_channels']
 
         self.drops = nn.ModuleList()
         for drop_prob, block_size in d['dropblock']:
@@ -69,13 +69,12 @@ class ResNet(pl.LightningModule):
         for layer in range(d['n_layers']):
             self.layers.append(
                 self._make_layer(
-                    block, d['n_channels']
-                    [layer], d['blocks'][layer],
+                    block, d['n_channels']*2**layer, d['blocks'][layer],
                     kernel_size=d['kernel_sizes'][layer],
                     skip_kernel_size=d['skip_kernel_sizes'][layer],
                     stride=1 if layer == 1 else 2))
 
-        self.linear = nn.Linear(d['n_channels'][-1], num_classes)
+        self.linear = nn.Linear(d['n_channels']*2**layer, num_classes)
 
     def configure_optimizers(self):
         return torch.optim.AdamW(
