@@ -108,7 +108,7 @@ def objective(trial):
     d['cutmix_p'] = 1-d['mixup_p']
 
     # SWA
-    d['SWA'] = bool(trial.suggest_int('SWA', 0, 1))
+    d['swa'] = bool(trial.suggest_int('SWA', 0, 1))
 
     model = ResNet(**d)
 
