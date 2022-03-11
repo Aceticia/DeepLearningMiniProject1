@@ -7,7 +7,7 @@ import torchvision.transforms as T
 from pytorch_lightning_spells.callbacks import CutMixCallback, MixUpCallback, RandomAugmentationChoiceCallback
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, StochasticWeightAveraging
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
 
@@ -43,8 +43,6 @@ type_aug = {
 }
 
 # Whether to use mixup, cutmix and label smoothing
-# https://pytorch-lightning-spells.readthedocs.io/en/latest/#augmentation
-# https://pytorch-lightning-spells.readthedocs.io/en/latest/pytorch_lightning_spells.losses.html#pytorch_lightning_spells.losses.MixupSoftmaxLoss
 mix_type = {
     'cutmix': CutMixCallback,
     'mixup': MixUpCallback,
@@ -109,6 +107,9 @@ def objective(trial):
     d['mixup_p'] = trial.suggest_float('mixup_p', 0, .1)
     d['cutmix_p'] = 1-d['mixup_p']
 
+    # SWA
+    d['SWA'] = bool(trial.suggest_int('SWA', 0, 1))
+
     model = ResNet(**d)
 
     # If model parameter count > 5M, return a bad value
@@ -132,8 +133,8 @@ def objective(trial):
     else:
         aug = aug()
     train_transform = T.Compose([
-        T.ToTensor(),
         aug,
+        T.ToTensor(),
         T.Normalize(
             (0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
     ])
@@ -165,21 +166,28 @@ def objective(trial):
     trial_id = trial.number
     wbl = WandbLogger(
         project=f"debug_DLProject1_{search_approach}_training", name=str(trial_id))
+
+    # Initialize the callbacks
+    callbacks = [
+        ModelCheckpoint(filepath=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
+                        monitor="val_loss"),
+        EarlyStopping(monitor="val_loss", patience=20),
+        RandomAugmentationChoiceCallback([
+            CutMixCallback(d['cutmix_alpha']),
+            MixUpCallback(d['mixup_alpha'])],
+            [d['cutmix_p'], d['mixup_p']]
+        ),
+        StochasticWeightAveraging()
+    ]
+    if d['swa']:
+        callbacks.append(StochasticWeightAveraging())
+
+    # Initialize trainer
     trainer = pl.Trainer(
         logger=wbl,
         max_epochs=100,
         gpus=1,
-        callbacks=[
-            ModelCheckpoint(filepath=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
-                            monitor="val_loss"),
-            EarlyStopping(monitor="val_loss", patience=20),
-            RandomAugmentationChoiceCallback([
-                CutMixCallback(d['cutmix_alpha']),
-                MixUpCallback(d['mixup_alpha'])],
-                [d['cutmix_p'], d['mixup_p']]
-            )
-
-        ],
+        callbacks=callbacks,
     )
     trainer.fit(model, train_dataloader=train_loader,
                 val_dataloaders=val_loader)
