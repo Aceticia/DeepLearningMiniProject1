@@ -165,16 +165,16 @@ def objective(trial):
     # Run train and val
     trial_id = trial.number
     wbl = WandbLogger(
-        project=f"debug_DLProject1_{search_approach}_training", name=str(trial_id))
+        project=f"DLProject1_{search_approach}_training", name=str(trial_id))
 
     # Initialize the callbacks
     callbacks = [
-        ModelCheckpoint(filepath=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
+        ModelCheckpoint(filename=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
                         monitor="val_loss"),
         EarlyStopping(monitor="val_loss", patience=20),
         RandomAugmentationChoiceCallback([
-            CutMixCallback(d['cutmix_alpha']),
-            MixUpCallback(d['mixup_alpha'])],
+            CutMixCallback(d['cutmix_alpha'], softmax_target=True),
+            MixUpCallback(d['mixup_alpha'], softmax_target=True)],
             [d['cutmix_p'], d['mixup_p']]
         ),
         StochasticWeightAveraging()
@@ -189,7 +189,7 @@ def objective(trial):
         gpus=1,
         callbacks=callbacks,
     )
-    trainer.fit(model, train_dataloader=train_loader,
+    trainer.fit(model, train_dataloaders=train_loader,
                 val_dataloaders=val_loader)
     trainer.test(model, test_dataloaders=test_loader)
     wandb.finish()
@@ -224,7 +224,7 @@ if __name__ == "__main__":
         **options[search_approach],  # Options specifically for the strategy
         study_name=f'DL2022_{search_approach}',
         storage=optuna.storages.RDBStorage(
-            url=f"sqlite:///records/debug_{search_approach}.db",
+            url=f"sqlite:///records/{search_approach}.db",
             engine_kwargs={"connect_args": {"timeout": 500}}),
         sampler=sampler[search_approach](**sampler_args[search_approach]),
         load_if_exists=True,
