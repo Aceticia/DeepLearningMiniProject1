@@ -39,10 +39,11 @@ if __name__ == "__main__":
     fig.write_image("./storage/size_penalty.png")
 
     # Plot the contour for sizes of each block and hidden units
-    fig = plot_contour(
-        study,
-        target=lambda t: t.values[1],
-        target_name="validation acc",
-        params=[f"layer{layer}_nblocks" for layer in range(4)],
-    )
-    fig.write_image(f"./storage/block_size_relations.png")
+    for layer in range(3):
+        fig = plot_contour(
+            study,
+            target=lambda t: t.values[1],
+            target_name="validation acc",
+            params=[f"layer{layer_}_nblocks" for layer_ in [layer, layer + 1]],
+        )
+        fig.write_image(f"./storage/layer{layer}_and_layer{layer+1}.png")
