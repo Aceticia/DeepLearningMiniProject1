@@ -4,6 +4,7 @@ if __name__ == "__main__":
     import optuna
     from optuna.visualization import plot_contour
     from optuna.visualization import plot_slice
+    from optuna.visualization import plot_edf
 
     # Load the study database
     study = optuna.load_study(
@@ -31,10 +32,10 @@ if __name__ == "__main__":
         fig.write_image(f"./storage/layer{layer}_dropblock_figure.png")
 
     # Plot the edf of validation acc
-    fig = plot_slice(study, target=lambda t: t.values[1], target_name="Validation acc")
+    fig = plot_edf(study, target=lambda t: t.values[1], target_name="Validation acc")
     fig.write_image("./storage/val_acc_edf.png")
 
-    fig = plot_slice(study, target=lambda t: t.values[0], target_name="Size penalty")
+    fig = plot_edf(study, target=lambda t: t.values[0], target_name="Size penalty")
     fig.write_image("./storage/size_penalty.png")
 
     # Plot the contour for sizes of each block and hidden units
@@ -42,6 +43,6 @@ if __name__ == "__main__":
         study,
         target=lambda t: t.values[1],
         target_name="validation acc",
-        params=[f"layer{layer}_nblocks" for layer in range(4)] + ["nhidden"],
+        params=[f"layer{layer}_nblocks" for layer in range(4)],
     )
-    fig.write_image(f"./storage/layer{layer}_dropblock_figure.png")
+    fig.write_image(f"./storage/block_size_relations.png")
