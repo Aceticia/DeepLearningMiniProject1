@@ -33,13 +33,9 @@ min_weight_decay = 1e-6
 
 # Augmix, randaug, and more
 type_aug = {
-    "AutoAugment": (
-        T.AutoAugment,
-        lambda t: T.AutoAugmentPolicy.CIFAR10),
     "RandAugment": (
         T.RandAugment,
         lambda t: t.suggest_int("randaug_num_ops", 2, 10)),
-    "TrivialAugment": T.TrivialAugmentWide
 }
 
 # Whether to use mixup, cutmix and label smoothing
@@ -96,8 +92,7 @@ def objective(trial):
         )
 
     # Sample aug
-    aug_to_use = trial.suggest_categorical(
-        "augment_type", list(type_aug.keys()))
+    aug_to_use = "RandAugment"
     d["aug_to_use"] = aug_to_use
 
     # Sample mixup, snapmix and cutmix
@@ -165,12 +160,14 @@ def objective(trial):
     # Run train and val
     trial_id = trial.number
     wbl = WandbLogger(
-        project=f"DLProject1_{search_approach}_training", name=str(trial_id))
+        project=f"DLProject1_{search_approach}_w_augs", name=str(trial_id))
 
     # Initialize the callbacks
     callbacks = [
-        ModelCheckpoint(filename=f"./outputs/{search_approach}/checkpoints/{trial_id}.pt",
-                        monitor="val_loss"),
+        ModelCheckpoint(
+            dirpath=f"./outputs/{search_approach}/checkpoints/",
+            filename=f"{trial_id}.pt",
+            monitor="val_loss"),
         EarlyStopping(monitor="val_loss", patience=20),
         RandomAugmentationChoiceCallback([
             CutMixCallback(d['cutmix_alpha'], softmax_target=True),
@@ -191,6 +188,8 @@ def objective(trial):
     )
     trainer.fit(model, train_dataloaders=train_loader,
                 val_dataloaders=val_loader)
+
+    model = ResNet.load_from_checkpoint(f"./outputs/{search_approach}/checkpoints/{trial_id}.pt.ckpt")
     trainer.test(model, test_dataloaders=test_loader)
     wandb.finish()
 

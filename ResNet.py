@@ -11,27 +11,48 @@ from pytorch_lightning_spells.losses import MixupSoftmaxLoss
 
 class BasicBlock(nn.Module):
     def __init__(
-            self, in_planes, planes, stride=1,
-            kernel_size=3, skip_kernel_size=1,
-            drop_prob=0.2, block_size=3):
+        self,
+        in_planes,
+        planes,
+        stride=1,
+        kernel_size=3,
+        skip_kernel_size=1,
+        drop_prob=0.2,
+        block_size=3,
+    ):
         super(BasicBlock, self).__init__()
 
         self.conv1 = nn.Conv2d(
-            in_planes, planes, kernel_size=kernel_size, stride=stride,
-            padding=kernel_size//2, bias=False)
+            in_planes,
+            planes,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=kernel_size // 2,
+            bias=False,
+        )
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=kernel_size,
-                               stride=1, padding=kernel_size//2, bias=False)
+        self.conv2 = nn.Conv2d(
+            planes,
+            planes,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=kernel_size // 2,
+            bias=False,
+        )
         self.bn2 = nn.BatchNorm2d(planes)
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, planes,
-                          kernel_size=skip_kernel_size,
-                          padding=skip_kernel_size//2,
-                          stride=stride, bias=False),
-                nn.BatchNorm2d(planes)
+                nn.Conv2d(
+                    in_planes,
+                    planes,
+                    kernel_size=skip_kernel_size,
+                    padding=skip_kernel_size // 2,
+                    stride=stride,
+                    bias=False,
+                ),
+                nn.BatchNorm2d(planes),
             )
 
     def forward(self, x):
@@ -51,42 +72,58 @@ class ResNet(pl.LightningModule):
         block = BasicBlock
         num_classes = 10
         self.d = d
-        self.in_planes = d['n_channels']
+        self.in_planes = d["n_channels"]
 
         self.drops = nn.ModuleList()
-        for drop_prob, block_size in d['dropblock']:
-            self.drops.append(LinearScheduler(
-                DropBlock2D(drop_prob=drop_prob, block_size=block_size),
-                start_value=0.,
-                stop_value=drop_prob,
-                nr_steps=1000
-            ))
+        for drop_prob, block_size in d["dropblock"]:
+            self.drops.append(
+                LinearScheduler(
+                    DropBlock2D(drop_prob=drop_prob, block_size=block_size),
+                    start_value=0.0,
+                    stop_value=drop_prob,
+                    nr_steps=1000,
+                )
+            )
 
-        self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            3, self.in_planes, kernel_size=3, stride=1, padding=1, bias=False
+        )
         self.bn1 = nn.BatchNorm2d(self.in_planes)
 
         self.layers = nn.ModuleList()
-        for layer in range(d['n_layers']):
+        for layer in range(d["n_layers"]):
             self.layers.append(
                 self._make_layer(
-                    block, d['n_channels']*2**layer, d['blocks'][layer],
-                    kernel_size=d['kernel_sizes'][layer],
-                    skip_kernel_size=d['skip_kernel_sizes'][layer],
-                    stride=1 if layer == 1 else 2))
+                    block,
+                    d["n_channels"] * 2 ** layer,
+                    d["blocks"][layer],
+                    kernel_size=d["kernel_sizes"][layer],
+                    skip_kernel_size=d["skip_kernel_sizes"][layer],
+                    stride=1 if layer == 1 else 2,
+                )
+            )
 
-        self.linear = nn.Linear(d['n_channels']*2**layer, num_classes)
-        self.loss = MixupSoftmaxLoss(label_smooth_eps=d['label_smooth'])
+        self.linear = nn.Linear(d["n_channels"] * 2 ** layer, num_classes)
+        self.loss = MixupSoftmaxLoss(label_smooth_eps=d["label_smooth"])
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(
-            self.parameters(),
-            lr=self.d['lr'],
-            weight_decay=self.d['weight_decay']
+        optim = torch.optim.AdamW(
+            self.parameters(), lr=self.d["lr"], weight_decay=self.d["weight_decay"]
         )
 
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optim,
+            mode="min",
+            factor=0.5,
+            patience=10,
+            verbose=True,
+            cooldown=5,
+            min_lr=1e-8,
+        )
+        return {"optimizer": optim, "scheduler": scheduler, "monitor": "val_loss"}
+
     def _make_layer(self, block, planes, num_blocks, stride, **kwargs):
-        strides = [stride] + [1]*(num_blocks-1)
+        strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
             layers.append(block(self.in_planes, planes, stride, **kwargs))
