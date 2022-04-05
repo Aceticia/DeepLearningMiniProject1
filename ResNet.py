@@ -111,16 +111,7 @@ class ResNet(pl.LightningModule):
             self.parameters(), lr=self.d["lr"], weight_decay=self.d["weight_decay"]
         )
 
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optim,
-            mode="min",
-            factor=0.5,
-            patience=10,
-            verbose=True,
-            cooldown=5,
-            min_lr=1e-8,
-        )
-        return {"optimizer": optim, "scheduler": scheduler, "monitor": "val_loss"}
+        return optim
 
     def _make_layer(self, block, planes, num_blocks, stride, **kwargs):
         strides = [stride] + [1] * (num_blocks - 1)

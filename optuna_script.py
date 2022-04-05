@@ -188,8 +188,6 @@ def objective(trial):
     )
     trainer.fit(model, train_dataloaders=train_loader,
                 val_dataloaders=val_loader)
-
-    model = ResNet.load_from_checkpoint(f"./outputs/{search_approach}/checkpoints/{trial_id}.pt.ckpt")
     trainer.test(model, test_dataloaders=test_loader)
     wandb.finish()
 
