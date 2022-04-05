@@ -1,5 +1,3 @@
-import pytorch_lightning as pl
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -57,11 +55,9 @@ class BasicBlock(nn.Module):
         return out
 
 
-class ResNet(pl.LightningModule):
+class ResNet(nn.Module):
     def __init__(self, **d):
         super(ResNet, self).__init__()
-
-        self.save_hyperparameters()
 
         block = BasicBlock
         num_classes = 10
@@ -99,11 +95,11 @@ class ResNet(pl.LightningModule):
 
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
+        for layer in self.layers:
+            out = layer(out)
         out = F.adaptive_avg_pool2d(out, (1, 1))
         out = out.view(out.size(0), -1)
         return self.linear(out)
 
 def project1_model():
-    checkpoint_path = "best.ckpt"
-    loaded_model = ResNet.load_from_checkpoint(checkpoint_path)
-    return loaded_model
+    return ResNet(**torch.load('hyperparams.pt'))

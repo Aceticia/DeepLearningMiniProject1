@@ -36,7 +36,7 @@ def test(model, testloader, criterion, device):
 def main():
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2471, 0.2435, 0.2616)),
+        transforms.Normalize((0.4914, 0.4821, 0.4465), (0.2469, 0.2430, 0.2610)),
     ])
 
     validset = torchvision.datasets.CIFAR10(
@@ -55,7 +55,8 @@ def main():
         v_acc, _ = test(model, validloader, criterion, device)
         print('Valid Accuracy: {:.1f}'.format(v_acc))
 
-    except:
+    except Exception as e:
+        print(e)
         print("FAIL")
 
 if __name__ == '__main__':
